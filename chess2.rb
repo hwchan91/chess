@@ -12,11 +12,6 @@ class Player
 
 end
 
-#white = Player.new("White", ["♔", "♕", "♖", "♗"," ♗", "♙"])
-#black = Player.new("Black", ["♚", "♛", "♜", "♝", "♞", "♟"])
-#white = Player.new("White", [" k", " q", " r", " b", " n", " p"], -1)
-#black = Player.new("Black", [" K", " Q", " R", " B", " N", " P"], 1)
-
 
 class Board
   attr_accessor :board, :adv2, :white, :black, \
@@ -233,10 +228,6 @@ class Board
     valid_moves
   end
 
-  #def pawn_adv2?(player, pos)
-  #  pawn_adv2(player, pos).size != 0
-  #end
-
   def en_passant(player, pos)
     valid_moves = []
     row = pos[0] ; col = pos[1]
@@ -340,13 +331,13 @@ class Board
   def valid_make(player, start, finish, pawn_promote_to = nil)
     if check_move(player, start, finish) and !move_ends_in_check?(player, start, finish)
       piece = piece_in_square(start)
-      make_move(player, start, finish)
+      promote_pawn = false
+      promote_pawn = true if [@b_pawn, @w_pawn].include? piece and pawn_promotion_valid?(player, start, finish)
 
       #if the piece is a pawn
       if [@b_pawn, @w_pawn].include? piece
         @board[@adv2[0]][@adv2[1]] = @nil if finish == en_passant(player, start)[0] #remove the opponent pawn if en passant
         @adv2 = finish == pawn_adv2(player, start)[0] ? finish : [] #if pawn advances 2 steps, set @pawn_adv2 to the finish square; otherwise, reset @pawn_adv2
-        pawn_promotion(player, finish, pawn_promote_to) if pawn_promotion_valid?(player, start, finish)
       else
         @adv2 = []
       end
@@ -357,6 +348,8 @@ class Board
         player.r_rook_moved = true if [[0,0], [7,7]].include? start
       end
     end
+    make_move(player, start, finish)
+    pawn_promotion(player, finish, pawn_promote_to) if promote_pawn
     #print_board
   end
 
@@ -390,7 +383,6 @@ class Board
       player.king_moved = true if move == true
       player.l_rook_moved = true if move == true
     end
-    #print_board
   end
 
   def r_castling_make(player, move = true)
@@ -399,7 +391,6 @@ class Board
       player.king_moved = true if move == true
       player.r_rook_moved = true if move == true
     end
-    #print_board
   end
 
   def castling_make(player, col_of_rook)
@@ -502,7 +493,7 @@ class Game
   end
 
   def make_move
-    start = nil; fin_notation = nil; finish = nil; promote = nil
+    start = nil; fin_notation = nil; finish = nil; promote = nil; letters_in_move = ""
     @comment = nil
     puts "#{@curr_player.color}'s turn. Make your move(please use algebriac notation).'"
     move = gets.chomp.strip
@@ -526,12 +517,10 @@ class Game
         if move.length == 2
           piece = "P"; fin_notation = move
         elsif move.length == 3
-          fin_notation = move[1..2]
           if ("a".."h").to_a.include? move[0] and ["Q","N","R","B"].include? move[-1]
-            piece = "P"; promote = move[-1]
+             promote = move[-1]; fin_notation = move[0..1]
           else
-            piece = move[0]
-            piece = "P" if ("a".."h").to_a.include? piece
+            piece = move[0]; fin_notation = move[1..2]
           end
         elsif move.length == 4
           fin_notation = move[2..3]
@@ -540,14 +529,10 @@ class Game
       elsif move.size == 2 #i.e. capture
         letters_in_move = move[1].scan(/[a-zA-Z]/).join
         if move[1].length == 3 and ["Q","N","R","B"].include? move[1][-1]
-          fin_notation = move[1][1..2]
-          piece = "P"; promote = move[1][-1]
+          piece = move[0]; fin_notation = move[1][0..1]; promote = move[1][2]
         elsif letters_in_move.length == 1 or (letters_in_move.length == 3 and letters_in_move[-2..-1] == "ep") #in case of en passant notation
           fin_notation = move[1][0..1]
           piece = move[0]
-          if ("a".."h").to_a.include? piece
-            promote = piece;   piece = "P"
-          end
         end
       end
       finish = convert(fin_notation) if !fin_notation.nil?
@@ -557,16 +542,24 @@ class Game
     if start != "pass"
       if start != nil and finish != nil
         fin_notation = "x" + fin_notation if oppo_player.moves.include? @board.board[finish[0]][finish[1]]
-        piece = (start[1] + 97).chr if piece == "P" and start != "ambiguous"
+
         if start == "ambiguous"
           if piece == "P"
             @comment = "More than one piece can make move. Do you mean '#{@differentiate[0] + fin_notation}' or '#{@differentiate[1] + fin_notation}'."
           else #i.e. not pawn
             @comment = "More than one piece can make move. Do you mean '#{piece + @differentiate[0] + fin_notation}' or '#{piece + @differentiate[1] + fin_notation}'."
           end
-        elsif (!oppo_player.moves.include? @board.board[finish[0]][finish[1]] and move.is_a? Array) \
-          or (oppo_player.moves.include? @board.board[finish[0]][finish[1]] and !move.is_a? Array) #remind if meant capture or non-capture
-          @comment = "Do you mean '#{piece + fin_notation}'?"
+        elsif finish == @board.en_passant(@curr_player, start)[0] and ( move.size != 2 or letters_in_move[-2..-1] != "ep")
+          @comment = "Do you mean '#{(start[1] + 97).chr + "x" + fin_notation + "e.p."}'?"
+        elsif finish != @board.en_passant(@curr_player, start)[0] and \
+          ((!oppo_player.moves.include? @board.board[finish[0]][finish[1]] and move.is_a? Array) \
+          or (oppo_player.moves.include? @board.board[finish[0]][finish[1]] and !move.is_a? Array)) #remind if meant capture or non-capture
+          piece = (start[1] + 97).chr if piece == "P"
+          if board.pawn_promotion_valid?(@curr_player, start, finish) and promote == nil
+            @comment = "Do you mean '#{piece + fin_notation}'? Please also specify what piece does the pawn promote to."
+          else
+            @comment = "Do you mean '#{piece + fin_notation}'?"
+          end
         elsif board.pawn_promotion_valid?(@curr_player, start, finish) and promote == nil
           @comment = "Plese specify what piece does the pawn promote to."
         else
@@ -583,35 +576,41 @@ class Game
 
   def find_start(piece, finish)
     i = @curr_player == white ? 0 : 1
-    case piece[0]
-    when "P" #pawn
+    if ("a".."h").to_a.include? piece or piece == "P" #i.e. pawn
       squares_with_piece = board.find_piece([board.w_pawn, board.b_pawn][i])
       valid_squares = squares_with_piece.select { |pos| board.find_valid_moves(board.w_pawn, @curr_player, pos).include? finish}
-    when "R"
-      squares_with_piece = board.find_piece([board.w_rook, board.b_rook][i])
-      valid_squares = squares_with_piece.select { |pos| board.find_valid_moves(board.w_rook, @curr_player, pos).include? finish }
-    when "N"
-      squares_with_piece = board.find_piece([board.w_knight, board.b_knight][i])
-      valid_squares = squares_with_piece.select { |pos| board.find_valid_moves(board.w_knight, @curr_player, pos).include? finish }
-    when "B"
-      squares_with_piece = board.find_piece([board.w_bishop, board.b_bishop][i])
-      valid_squares = squares_with_piece.select { |pos| board.find_valid_moves(board.w_bishop, @curr_player, pos).include? finish }
-    when "Q"
-      squares_with_piece = board.find_piece([board.w_queen, board.b_queen][i])
-      valid_squares = squares_with_piece.select { |pos| board.find_valid_moves(board.w_queen, @curr_player, pos).include? finish }
-    when "K"
-      squares_with_piece = board.find_piece([board.w_king, board.b_king][i])
-      valid_squares = squares_with_piece.select { |pos| board.find_valid_moves(board.w_king, @curr_player, pos).include? finish }
     else
-      valid_squares = []
+      case piece[0]
+      when "R"
+        squares_with_piece = board.find_piece([board.w_rook, board.b_rook][i])
+        valid_squares = squares_with_piece.select { |pos| board.find_valid_moves(board.w_rook, @curr_player, pos).include? finish }
+      when "N"
+        squares_with_piece = board.find_piece([board.w_knight, board.b_knight][i])
+        valid_squares = squares_with_piece.select { |pos| board.find_valid_moves(board.w_knight, @curr_player, pos).include? finish }
+      when "B"
+        squares_with_piece = board.find_piece([board.w_bishop, board.b_bishop][i])
+        valid_squares = squares_with_piece.select { |pos| board.find_valid_moves(board.w_bishop, @curr_player, pos).include? finish }
+      when "Q"
+        squares_with_piece = board.find_piece([board.w_queen, board.b_queen][i])
+        valid_squares = squares_with_piece.select { |pos| board.find_valid_moves(board.w_queen, @curr_player, pos).include? finish }
+      when "K"
+        squares_with_piece = board.find_piece([board.w_king, board.b_king][i])
+        valid_squares = squares_with_piece.select { |pos| board.find_valid_moves(board.w_king, @curr_player, pos).include? finish }
+      else
+        valid_squares = []
+      end
     end
 
-    if piece.length == 1
-      unique_start(valid_squares)
-    elsif piece.length == 2
-      unique_start(valid_squares, piece[1])
+    if ("a".."h").to_a.include? piece
+      unique_start(valid_squares, piece) #if pawn is specified, the specified pawn is used to disambiguate
     else
-      nil
+      if piece.length == 1
+        unique_start(valid_squares)
+      elsif piece.length == 2
+        unique_start(valid_squares, piece[1])
+      else
+        nil
+      end
     end
   end
 
@@ -627,7 +626,6 @@ class Game
         else
           @differentiate = [(8- valid_squares[0][0]).str, (8 - valid_squares[1][0]).str]
         end
-        p @differentiate
         "ambiguous"
       else
         valid_squares_disamb = disamb(valid_squares, disambiguate)
