@@ -417,6 +417,10 @@ class Board
       true
   end
 
+  def sb_wins?(player)
+    (player == @white and find_piece(@b_king).empty?) or (player == @black and find_piece(@w_king).empty?)
+  end
+
   def checkmate?(player)
     check?(player) and no_moves?(oppo_player(player))
   end
@@ -426,10 +430,14 @@ class Board
   end
 
   def pawn_promotion_valid?(player, start, finish)
-    if player == @white and piece_in_square(start) == @w_pawn
-      finish[0] == 0
-    elsif player == @black and piece_in_square(start) == @b_pawn
-      finish[0] == 7
+    if [@w_king, @b_king].include? piece_in_square(finish)
+      false #do not ask for promote piece if the player wins game
+    else
+      if player == @white and piece_in_square(start) == @w_pawn
+        finish[0] == 0
+      elsif player == @black and piece_in_square(start) == @b_pawn
+        finish[0] == 7
+      end
     end
   end
 
@@ -483,7 +491,11 @@ class Game
       end
     end
 
-    if @board.checkmate?(@curr_player)
+    if @board.sb_wins?(@curr_player)
+      board.print_board
+      puts "#{@curr_player.color} wins."
+      @game_end = true
+    elsif @board.checkmate?(@curr_player)
       board.print_board
       puts "Checkmate. #{@curr_player.color} wins."
       @game_end = true
@@ -656,3 +668,5 @@ class Game
   end
 
 end
+
+Game.new
